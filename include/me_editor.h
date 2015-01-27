@@ -21,8 +21,8 @@
  */
 
 #define me_editor_top_midi_class	    me_editor_midi_class_0
-#define DEFAULT_DEVICE_ID 0x10
-#define DEFAULT_MODEL_ID 0x4C
+#define DEFAULT_DEVICE_ID 0x00
+#define DEFAULT_MODEL_ID 0x1F
 
 #ifndef ME_EDITOR_DEBUG
 #define ME_EDITOR_DEBUG 1

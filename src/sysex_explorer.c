@@ -838,7 +838,7 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 }
 
 static void sysex_explorer_menu_wrapper(void) {
-        char *headers[] = { "Sysex Explorer" };
+        char *headers[] = { "ME-5 Sysex Explorer" };
 	char *footer =  
 	"(S)et value, Re(f)resh value, Refresh (A)ll, (Q)uit, "
 	"(C)opy, (P)aste, C(l)ear, (W)rite, (R)ead.";
@@ -866,7 +866,7 @@ static void logout(void) {
 }
 
 static menu_t main_menu_list[] = {
-	{ "Sysex Explorer",		sysex_explorer_menu_wrapper },
+	{ "ME-5 Sysex Explorer",	sysex_explorer_menu_wrapper },
 	{ "View log",			view_log },
 	{ "Clear log",			clear_log },
 	{ "Exit",			logout },

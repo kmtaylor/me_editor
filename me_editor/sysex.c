@@ -116,18 +116,14 @@ extern int sysex_send(uint8_t dev_id, uint32_t model_id, uint32_t sysex_addr,
 	buf[i++] = MIDI_ROLAND_ID;
 	buf[i++] = dev_id;			/* Device ID */
 
-	buf[i++] = (model_id & 0xff0000) >> 16;	/* Model ID MSB */
-	buf[i++] = (model_id & 0x00ff00) >> 8;	/* Model ID*/
-	buf[i++] = (model_id & 0x0000ff);	/* Model ID LSB */
+	buf[i++] = model_id;			/* Model ID */
 
 	buf[i++] = MIDI_CMD_DT1;		/* Command ID (DT1) */
 
 	start = i;
 
-	buf[i++] = (sysex_addr & 0xff000000) >> 24;
-	buf[i++] = (sysex_addr & 0x00ff0000) >> 16;
-	buf[i++] = (sysex_addr & 0x0000ff00) >> 8;
-	buf[i++] = (sysex_addr & 0x000000ff);
+	buf[i++] = (sysex_addr & 0xff00) >> 8;
+	buf[i++] = (sysex_addr & 0x00ff);
 	
 	memcpy(buf + i, data, sysex_size);
 	i += sysex_size;
@@ -156,23 +152,17 @@ int sysex_recv(uint8_t dev_id, uint32_t model_id,
 	buf[i++] = MIDI_ROLAND_ID;
 	buf[i++] = dev_id;			/* Device ID */
 
-	buf[i++] = (model_id & 0xff0000) >> 16;	/* Model ID MSB */
-	buf[i++] = (model_id & 0x00ff00) >> 8;	/* Model ID*/
-	buf[i++] = (model_id & 0x0000ff);	/* Model ID LSB */
+	buf[i++] = model_id;			/* Model ID */
 
 	buf[i++] = MIDI_CMD_RQ1;		/* Command ID (RQ1) */
 
 	start = i;
 
-	buf[i++] = (sysex_addr & 0xff000000) >> 24;
-	buf[i++] = (sysex_addr & 0x00ff0000) >> 16;
-	buf[i++] = (sysex_addr & 0x0000ff00) >> 8;
-	buf[i++] = (sysex_addr & 0x000000ff);
+	buf[i++] = (sysex_addr & 0xff00) >> 8;
+	buf[i++] = (sysex_addr & 0x00ff);
 	
-	buf[i++] = (sysex_size & 0xff000000) >> 24;
-	buf[i++] = (sysex_size & 0x00ff0000) >> 16;
-	buf[i++] = (sysex_size & 0x0000ff00) >> 8;
-	buf[i++] = (sysex_size & 0x000000ff);
+	buf[i++] = (sysex_size & 0xff00) >> 8;
+	buf[i++] = (sysex_size & 0x00ff);
 	
 	sum = checksum(i - start, buf + start);
 
