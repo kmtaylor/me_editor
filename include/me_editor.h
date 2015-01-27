@@ -88,7 +88,6 @@ extern char **me_editor_get_parents(uint32_t sysex_addr, int *num);
 extern uint32_t me_editor_get_sysex_size(uint32_t sysex_addr);
 
 extern int me_editor_class_num_parents(MidiClass *class);
-extern uint32_t me_editor_get_sysex_value(uint8_t *data, uint32_t size);
 
 /* Block, waiting for a new incoming sysex event
  * If successful, DATA contains a newly allocated buffer of the received
@@ -101,36 +100,14 @@ extern int me_editor_listen_sysex_event(uint8_t *command_id,
 extern void me_editor_send_bulk_sysex(midi_address m_addresses[],
 		const int num);
 
-extern void me_editor_send_sysex(uint32_t sysex_addr,
-		                uint32_t sysex_size, uint8_t *data);
-
-extern void me_editor_send_sysex_value(uint32_t sysex_addr,
-				uint32_t sysex_size, uint32_t sysex_value);
-
 extern int me_editor_get_bulk_sysex(midi_address m_addresses[],
 		const int num);
-
-/* Requests sysex data and blocks waiting for a response.
- * If a response is received, DATA points to a newly allocated buffer
- * containing the raw sysex data.
- * If a timeout occurs, an unrecognised response arrives or a checksum
- * error occurs, me_editor_get_sysex returns -1 with DATA set to NULL.
- * If BLACKLISTING is enabled, an attempt to read a blacklisted SYSEX_ADDR
- * will result in a return value of -2 with DATA set to NULL */
-extern int me_editor_get_sysex(uint32_t sysex_addr,
-		                uint32_t sysex_size, uint8_t **data);
-
-extern char *me_editor_get_patch_name(uint32_t sysex_addr);
-extern char *me_editor_get_copy_patch_name(void);
-extern int me_editor_refresh_patch_names(void);
 
 /* Class refers to the parent class */
 extern int me_editor_copy_class(MidiClass *class, uint32_t sysex_addr,
 				int *depth);
 extern int me_editor_paste_class(MidiClass *class, uint32_t sysex_addr,
 		                int *depth);
-extern int me_editor_paste_layer_to_part(MidiClass *class,
-		uint32_t sysex_addr, int *depth, int layer, int part);
 extern void me_editor_flush_copy_data(int *depth);
 extern int me_editor_write_copy_data_to_file(char *filename, int *depth);
 extern int me_editor_read_copy_data_from_file(char *filename, int *depth);

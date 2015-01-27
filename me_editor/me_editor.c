@@ -356,6 +356,11 @@ cleanup:
 	return retval;
 }
 
+void me_editor_send_sysex(uint32_t sysex_addr,
+			    uint32_t sysex_size, uint8_t *data) {
+	sysex_send(device_id, model_id, sysex_addr, sysex_size, data);
+}
+
 void me_editor_send_bulk_sysex(midi_address m_addresses[], const int num) {
 	int i, blocks;
 	int total_size;
@@ -389,11 +394,6 @@ void me_editor_send_bulk_sysex(midi_address m_addresses[], const int num) {
 	}
 	free(data);
 	free(s_addresses);
-}
-
-void me_editor_send_sysex(uint32_t sysex_addr,
-			    uint32_t sysex_size, uint8_t *data) {
-	sysex_send(device_id, model_id, sysex_addr, sysex_size, data);
 }
 
 void me_editor_send_sysex_value(uint32_t sysex_addr,
@@ -668,143 +668,6 @@ int me_editor_paste_class(MidiClass *class, uint32_t sysex_addr,
 	free(cur_class_data);
 	free(broken_address_data);
 	(*depth) -= 1;
-	return retval;
-}
-
-/* Careful! These might change */
-static uint32_t studio_part_address_offset(int part) {
-	return 0x2000 + (0x100 * (part - 1));
-}
-
-static uint32_t studio_offset_address_offset(int part) {
-	return 0x3000 + (0x100 * (part - 1));
-}
-
-static int live_layer_address_offset(int part) {
-	return 206 + (65 * (part - 1));
-}
-
-static int live_offset_address_offset(int part) {
-	return 466 + (71 * (part - 1));
-}
-
-#define BLOCK1_SKIP	1
-#define BLOCK1_SIZE	41
-#define BLOCK1_OFFSET	0
-#define BLOCK2_SKIP	42
-#define BLOCK2_SIZE	4
-#define BLOCK2_OFFSET	15
-#define BLOCK3_SKIP	48
-#define BLOCK3_SIZE	3
-#define BLOCK3_OFFSET	15
-#define BLOCK_COPY(num) {\
-	for (i = BLOCK##num##_SKIP;					\
-		    i < BLOCK##num##_SIZE + BLOCK##num##_SKIP; i++) {	\
-	    to->m_addresses[i + BLOCK##num##_OFFSET].value =		\
-		from->m_addresses[i + offset].value;			\
-	}}
-static void me_editor_copy_layer_data(Class_data *to, Class_data *from,
-		int layer) {
-	int i;
-	uint32_t offset = live_layer_address_offset(layer);
-	BLOCK_COPY(1);
-	BLOCK_COPY(2);
-	BLOCK_COPY(3);
-}
-
-static void me_editor_copy_offset_data(Class_data *to, Class_data *from,
-		int layer) {
-	int i;
-	uint32_t offset = live_offset_address_offset(layer);
-	for (i = 0; i < to->size; i++) {
-	    to->m_addresses[i].value = from->m_addresses[i + offset].value;
-	}
-}
-
-int me_editor_paste_layer_to_part(MidiClass *class, uint32_t sysex_addr,
-		int *depth, int layer, int part) {
-	int retval = 0, dummy;
-	Class_data *cur_class_data, *studio_part_data, *studio_offset_data,
-		   *last_class_data, *first_class_data;
-	MidiClassMember *class_member;
-
-	cur_class_data = copy_paste_data;
-	if (!cur_class_data) return -1;
-
-	if (!me_editor_match_midi_address(sysex_addr)) return -1;
-
-	class_member = &class->members[match_class_member(sysex_addr,
-								class, 0)];
-	/* Sanity check */
-	if (layer < 1 || layer > 4) return -2;
-	if (part  < 1 || part  > 16) return -2;
-
-	/* Trick copy/paste routines */
-	first_class_data = copy_paste_data;
-	last_class_data = copy_paste_data;
-	while (last_class_data->next)
-	    last_class_data = last_class_data->next;
-	copy_paste_data = NULL;
-
-	/* Plan: 1. Copy studio part and offsets
-	 *	 2. Copy cur_class_data layer and offsets into copied data
-	 *	 3. Paste studio part and offsets
-	 */
-
-	retval = me_editor_copy_class(class_member->class,
-			sysex_addr + studio_part_address_offset(part),
-			&dummy);
-
-	if (retval < 0) {
-	    retval = -4;
-	    goto copy_failed;
-	}
-
-	studio_part_data = copy_paste_data;
-
-	sysex_wait_write();
-	retval = me_editor_copy_class(class_member->class,
-			sysex_addr + studio_offset_address_offset(part),
-			&dummy);
-
-	if (retval < 0) {
-	    retval = -4;
-	    goto copy_failed;
-	}
-
-	studio_offset_data = copy_paste_data;
-	while (studio_offset_data->next)
-		studio_offset_data = studio_offset_data->next;
-
-	/* The hard work is done here */
-	me_editor_copy_layer_data(studio_part_data, cur_class_data, layer);
-	me_editor_copy_offset_data(studio_offset_data, cur_class_data, layer);
-
-	retval = me_editor_paste_class(class_member->class,
-			sysex_addr + studio_part_address_offset(part),
-			&dummy);
-
-	if (retval < 0) goto paste_failed;
-
-	retval = me_editor_paste_class(class_member->class,
-			sysex_addr + studio_offset_address_offset(part),
-			&dummy);
-
-	if (retval < 0) goto paste_failed;
-
-	copy_paste_data = first_class_data;
-	copy_paste_data = copy_paste_data->next;
-	if (cur_class_data->m_addresses)
-		free(cur_class_data->m_addresses);
-	free(cur_class_data);
-	(*depth) -= 1;
-	return retval;
-
-paste_failed:
-	me_editor_flush_copy_data(&dummy);
-
-copy_failed:
-	copy_paste_data = first_class_data;
 	return retval;
 }
 

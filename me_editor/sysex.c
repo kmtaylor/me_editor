@@ -39,10 +39,10 @@
 #define MIDI_CMD_DT1		    0x12
 #define MIDI_ROLAND_ID		    0x41
 #define MAX_SYSEX_SIZE		    512
-#define SYSEX_DATA_OFFSET	    11
-#define SYSEX_COMMAND_OFFSET	    6
-#define SYSEX_ADDRESS_OFFSET	    7
-#define SYSEX_NOT_DATA_BYTES	    13
+#define SYSEX_DATA_OFFSET	    7
+#define SYSEX_COMMAND_OFFSET	    4
+#define SYSEX_ADDRESS_OFFSET	    5
+#define SYSEX_NOT_DATA_BYTES	    9
 
 int sysex_init(const char *client_name, int timeout_time,
                 enum init_flags flags) {
@@ -85,13 +85,11 @@ int sysex_listen_event(uint8_t *command_id,
 	if (data_bytes < 0) return -1;
 
 	*command_id = priv_data[SYSEX_COMMAND_OFFSET];
-	*sysex_addr = priv_data[SYSEX_ADDRESS_OFFSET]	<< 24 |
-		    priv_data[SYSEX_ADDRESS_OFFSET+1]	<< 16 |
-		    priv_data[SYSEX_ADDRESS_OFFSET+2]	<< 8 |
-		    priv_data[SYSEX_ADDRESS_OFFSET+3];
+	*sysex_addr = priv_data[SYSEX_ADDRESS_OFFSET]	<< 8 |
+		    priv_data[SYSEX_ADDRESS_OFFSET+1];
 	data_bytes = data_bytes - SYSEX_NOT_DATA_BYTES;
 	
-	*sum = checksum(data_bytes + 5, priv_data + SYSEX_ADDRESS_OFFSET);
+	*sum = checksum(data_bytes + 1, priv_data + SYSEX_DATA_OFFSET);
 
 	if (data_bytes > 0) {
 	    *data = allocate(uint8_t, data_bytes);
@@ -128,7 +126,7 @@ extern int sysex_send(uint8_t dev_id, uint32_t model_id, uint32_t sysex_addr,
 	memcpy(buf + i, data, sysex_size);
 	i += sysex_size;
 
-	sum = checksum(sysex_size + 4, buf + start);
+	sum = checksum(sysex_size + 2, buf + start);
 
 	buf[i++] = sum;
 	buf[i++] = MIDI_CMD_COMMON_SYSEX_END;

@@ -171,17 +171,16 @@ static void branch(char *const prog, char *const argv[]) {
 	}
 }
 
-static void increment_decrement_value(uint32_t sysex_address, int delta) {
+static void increment_decrement_value(uint32_t sysex_address,
+		uint32_t sysex_base_address, int delta) {
 	uint8_t *data;
 	midi_address *m_address = me_editor_match_midi_address(sysex_address);
-	uint32_t sysex_size = m_address->sysex_size;
-	uint32_t sysex_value = m_address->value;
-	sysex_value += delta;
-	if (delta) me_editor_send_sysex_value(sysex_address, 
-			sysex_size, sysex_value);
-	if (me_editor_get_sysex(sysex_address, sysex_size, &data) < 0)
-	    return;
-	m_address->value = me_editor_get_sysex_value(data, sysex_size);
+	midi_address *m_base_address = 
+		me_editor_match_midi_address(sysex_base_address);
+	m_address->value += delta;
+	m_address->flags &= ~M_ADDRESS_FETCHED;
+	if (delta) 
+	    me_editor_send_bulk_sysex(m_base_address, m_address->class->size);
 	free(data);
 }
 
@@ -349,7 +348,7 @@ static int get_layer_and_part(int *layer, int *part) {
 	return retval;
 }
 
-static int set_value(uint32_t sysex_address) {
+static int set_value(uint32_t sysex_address, uint32_t sysex_base_address) {
 	WINDOW *set_win, *form_win;
 	PANEL *set_panel;
 	FORM *set_form;
@@ -359,6 +358,8 @@ static int set_value(uint32_t sysex_address) {
 	int retval = 0;
 
 	midi_address *m_address = me_editor_match_midi_address(sysex_address);
+	midi_address *m_base_address =
+		me_editor_match_midi_address(sysex_base_address);
 	uint32_t sysex_size = m_address->sysex_size;
 	uint32_t sysex_value = m_address->value;
 
@@ -421,9 +422,9 @@ static int set_value(uint32_t sysex_address) {
 	
 	if (want_quit == 2) {
 	    sysex_value = atoi(field_buffer(set_fields[0], 0));
-	    me_editor_send_sysex_value(sysex_address, sysex_size,
-			    sysex_value);
 	    m_address->value = sysex_value;
+	    m_address->flags &= ~M_ADDRESS_FETCHED;
+	    me_editor_send_bulk_sysex(m_base_address, m_address->class->size);
 	}
 
 	if (want_quit == 1) retval = -1;
@@ -438,34 +439,6 @@ static int set_value(uint32_t sysex_address) {
 	return retval;
 }
 
-static void peek_value(uint32_t sysex_addr) {
-	char *message[3];
-	uint8_t *data;
-	uint32_t value;
-	uint32_t size = me_editor_get_sysex_size(sysex_addr);
-	int retval = me_editor_get_sysex(sysex_addr, size, &data);
-	if (retval < -1) {
-	    message[0] = "Error reading address:";
-	    message[1] = "Blacklisted address.";
-	    dialog_box(2, message, dialog_continue);
-	    return;
-	}
-	if (retval < 0) {
-	    message[0] = "Error reading address:";
-	    message[1] = "Timeout error.";
-	    dialog_box(2, message, dialog_continue);
-	    return;
-	}
-	value = me_editor_get_sysex_value(data, size);
-	message[0] = "Reading value:";
-	asprintf(&message[1], "Address =\t0x%X", sysex_addr);
-	asprintf(&message[2], "Value = \t0x%X", value); 
-	dialog_box(3, message, dialog_continue);
-	free(message[1]);
-	free(message[2]);
-	free(data);
-}
-
 /* Return values:
  * -1 = Don't print
  *  0 = Address blacklisted
@@ -474,13 +447,12 @@ static void peek_value(uint32_t sysex_addr) {
 static int update_value(uint32_t sysex_base_addr, uint32_t *sysex_value,
 		MidiClassMember *m_class, int refresh) {
 	uint32_t sysex_addr = sysex_base_addr + m_class->sysex_addr_base;
-	uint32_t sysex_size;
-	uint8_t *sysex_data;
-	midi_address *m_address;
+	midi_address *m_address, *m_base_address;
 
 	if (m_class->class) return -1;
 
 	m_address = me_editor_match_midi_address(sysex_addr);
+	m_base_address = me_editor_match_midi_address(sysex_base_addr);
 
 	if (refresh) m_address->flags &= ~M_ADDRESS_FETCHED;
 
@@ -489,14 +461,11 @@ static int update_value(uint32_t sysex_base_addr, uint32_t *sysex_value,
 	    return 1;
 	}
 
-	sysex_size = m_address->sysex_size;
-	if (me_editor_get_sysex(sysex_addr, sysex_size, &sysex_data) < 0) {
+	if (me_editor_get_bulk_sysex(m_base_address,
+				m_address->class->size) < 0) {
 	    return 0;
 	}
-	*sysex_value = me_editor_get_sysex_value(sysex_data, sysex_size);
-	m_address->value = *sysex_value;
-	m_address->flags |= M_ADDRESS_FETCHED;
-	free(sysex_data);
+	*sysex_value = m_address->value;
 	return 1;
 }
 
@@ -539,9 +508,6 @@ static void do_paste(MidiClassMember *tmp_member, MidiClass *cur_class,
 	if (layer_to_part) {
 	    layer_to_part = 0;
 	    if (get_layer_and_part(&layer, &part) < 0) return;
-	    retval = me_editor_paste_layer_to_part(cur_class,
-		sysex_base_addr + tmp_member->sysex_addr_base,
-		copy_depth, layer, part);
 	    tried_layer_to_part = 1;
 	} else {
 	    retval = me_editor_paste_class(cur_class,
@@ -653,14 +619,14 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
         mvprintw(LINES - 1, 0, footer);
 	post_menu(explorer_menu);
 
+	first_member_address = me_editor_match_midi_address(sysex_base_addr);
+
 	do {
 		update_panels();
 		doupdate();
 		if (damaged) {
 		    if (want_refresh) {
 			if (!cur_class->members[0].class) {
-			    first_member_address = 
-				me_editor_match_midi_address(sysex_base_addr);
 			    me_editor_get_bulk_sysex(first_member_address,
 					    n_members);
 			}
@@ -700,24 +666,21 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 			cur = current_item(explorer_menu);
 			tmp_member = item_userptr(cur);
 			increment_decrement_value(sysex_base_addr +
-					tmp_member->sysex_addr_base, 1);
+					tmp_member->sysex_addr_base,
+					sysex_base_addr, 1);
 			damaged = 1;
 			break;
 		    case KEY_LEFT:
 			cur = current_item(explorer_menu);
 			tmp_member = item_userptr(cur);
 			increment_decrement_value(sysex_base_addr +
-					tmp_member->sysex_addr_base, -1);
+					tmp_member->sysex_addr_base,
+					sysex_base_addr, -1);
 			damaged = 1;
 			break;
 		    case 10:
 			cur = current_item(explorer_menu);
 			tmp_member = item_userptr(cur);
-			if (!tmp_member->class) {
-			    peek_value(sysex_base_addr +
-					    tmp_member->sysex_addr_base);
-			    break;
-			}
 			new_headers = 
 				allocate(char *, n_parents + 2, func_name);
 			for (i = 0; i < n_parents + 1; i++)
@@ -734,20 +697,14 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 			tmp_member = item_userptr(cur);
 			if (tmp_member->class) break;
 			set_value(sysex_base_addr +
-					tmp_member->sysex_addr_base);
+					tmp_member->sysex_addr_base,
+					sysex_base_addr);
 			update_value(sysex_base_addr, &print_sysex_value,
-					                    tmp_member, 1);
+					            tmp_member, 1);
 			damaged = 1;
 			break;
 		    case 'a':
 			want_refresh = 1;
-			damaged = 1;
-			break;
-		    case 'f':
-			cur = current_item(explorer_menu);
-			tmp_member = item_userptr(cur);
-			increment_decrement_value(sysex_base_addr +
-					tmp_member->sysex_addr_base, 0);
 			damaged = 1;
 			break;
 		    case 'c':
