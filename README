@@ -1,0 +1,27 @@
+A software editor for the Boss ME-5.
+
+To build:
+
+Requirements:
+ - Jack Audio Connection Kit
+ - glib (part of the gtk project)
+ - flex and bison
+ - gcc and make
+
+The usual build commands:
+
+autoreconf --install (Use this if you don't have a configure script yet)
+./configure
+make
+make install
+
+This will build:
+me_explorer	- Patch editing, loading and unloading. You will probably want
+		  to customise sysex_explorer.h to meet your needs. In
+		  particular, you'll need to set PATCHDIR to something useful.
+		  (This is the location where saved patches are written to/
+		  read from).
+		  Another file location #define is LOGFILE in log.h
+Use:
+To use each programme, the Jack daemon must be running and a midi connection
+must be made between each application and the Juno.
