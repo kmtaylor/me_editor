@@ -118,15 +118,15 @@ extern int sysex_send(uint8_t dev_id, uint32_t model_id, uint32_t sysex_addr,
 
 	buf[i++] = MIDI_CMD_DT1;		/* Command ID (DT1) */
 
-	start = i;
-
 	buf[i++] = (sysex_addr & 0xff00) >> 8;
 	buf[i++] = (sysex_addr & 0x00ff);
 	
+	start = i;
+
 	memcpy(buf + i, data, sysex_size);
 	i += sysex_size;
 
-	sum = checksum(sysex_size + 2, buf + start);
+	sum = checksum(sysex_size, buf + start);
 
 	buf[i++] = sum;
 	buf[i++] = MIDI_CMD_COMMON_SYSEX_END;
