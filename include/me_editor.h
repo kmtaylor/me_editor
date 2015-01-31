@@ -30,7 +30,7 @@
 
 #define TIMEOUT_TIME 3000
 #define MAX_SET_NAME_SIZE 16
-#define NUM_USER_PATCHES 256
+#define NUM_USER_PATCHES 64
 
 extern void *__common_allocate(size_t size, char *func_name);
 
@@ -64,10 +64,20 @@ typedef struct s_midi_address {
 	uint32_t		value;
 } midi_address;
 
+enum me_patch_flags {
+	ME_PATCH_NAME_KNOWN             = 0x01,
+};
+
+typedef struct s_me_patch {
+        char                    name[MAX_SET_NAME_SIZE + 1];
+        enum me_patch_flags     flags;
+        uint32_t                sysex_base_addr;
+} MePatch;
+
 enum init_flags {
 	ME_EDITOR_READ		= 0x01,
 	ME_EDITOR_WRITE		= 0x02,
-	ME_EDITOR_ACK			= 0x04,
+	ME_EDITOR_ACK		= 0x04,
 };
 
 extern int me_editor_init(const char *client_name, enum init_flags flags);
@@ -103,6 +113,10 @@ extern void me_editor_send_bulk_sysex(midi_address m_addresses[],
 extern int me_editor_get_bulk_sysex(midi_address m_addresses[],
 		const int num);
 
+extern char *me_editor_get_patch_name(uint32_t sysex_addr);
+extern int me_editor_read_patch_names(char *filename);
+extern int me_editor_write_patch_names(char *filename);
+
 /* Class refers to the parent class */
 extern int me_editor_copy_class(MidiClass *class, uint32_t sysex_addr,
 				int *depth);
@@ -111,11 +125,16 @@ extern int me_editor_paste_class(MidiClass *class, uint32_t sysex_addr,
 extern void me_editor_flush_copy_data(int *depth);
 extern int me_editor_write_copy_data_to_file(char *filename, int *depth);
 extern int me_editor_read_copy_data_from_file(char *filename, int *depth);
+extern char *me_editor_get_copy_data_name(void);
 
 #ifdef ME_EDITOR_PRIVATE
 
 #define MAX_SYSEX_PACKET_SIZE 120
 
+#define FIRST_USER_PATCH_ADDR 0x1000
+#define USER_PATCH_DELTA 0x20
+
+#define PATCH_GROUP	    "Patch Names"
 #define ADDRESS_GROUP	    "Addresses"
 #define GENERAL_GROUP	    "General"
 #define SIZE_KEY	    "Size"
@@ -129,6 +148,7 @@ struct s_class_data {
 	MidiClass	    *class;
 	Class_data	    *next;
 	unsigned int	    size;
+	char		    *name;
 };
 
 #endif

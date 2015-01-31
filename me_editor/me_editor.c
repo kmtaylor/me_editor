@@ -25,6 +25,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <glib.h>
+#include <libgen.h>
 
 #define ME_EDITOR_PRIVATE
 #include <me_editor.h>
@@ -39,6 +40,8 @@
 #define allocate(t, num) __common_allocate(sizeof(t) * num, "me_editor")
 #define NUM_ADDRESSES me_editor_num_addresses
 #define NUM_CLASSES me_editor_num_classes
+
+static MePatch me_editor_patches[NUM_USER_PATCHES];
 
 static uint8_t device_id = DEFAULT_DEVICE_ID;
 static uint32_t model_id = DEFAULT_MODEL_ID;
@@ -446,6 +449,123 @@ int me_editor_listen_sysex_event(uint8_t *command_id,
 	return sysex_listen_event(command_id, address, data, &sum);
 }
 
+static int me_editor_get_patch_index(uint32_t sysex_addr) {
+        int i;
+        for (i = 0; i < NUM_USER_PATCHES; i++) {
+                if (me_editor_patches[i].sysex_base_addr == sysex_addr) {
+                        return i;
+                }
+        }
+        return -1;
+}
+
+char *me_editor_get_patch_name(uint32_t sysex_addr) {
+	int i = me_editor_get_patch_index(sysex_addr);
+
+	if (i < 0) return NULL;
+        if (me_editor_patches[i].flags & ME_PATCH_NAME_KNOWN)
+            return me_editor_patches[i].name;
+        return NULL;
+}
+
+#define UNKNOWN_PATCH_NAME "Unknown"
+int me_editor_read_patch_names(char *filename) {
+	int retval, p_error, i;
+	GKeyFile *key_file;
+	GError *error = NULL;
+	gsize length;
+	gchar **name_keys;
+	gchar *cur_key;
+	uint32_t sysex_base_addr;
+	uint32_t cur_sysex_base = FIRST_USER_PATCH_ADDR;
+	char *patch_name;
+	int patch_name_len;
+
+	/* Open file */
+	key_file = g_key_file_new();
+	if (g_key_file_load_from_file(key_file, filename,
+				G_KEY_FILE_NONE, NULL) == FALSE) {
+	    /* Fill up local cache with "Unknown" */
+	    for (i = 0; i < NUM_USER_PATCHES; i++) {
+		me_editor_patches[i].sysex_base_addr = cur_sysex_base;
+		memcpy(me_editor_patches[i].name, UNKNOWN_PATCH_NAME,
+				strlen(UNKNOWN_PATCH_NAME) + 1);
+		me_editor_patches[i].flags |= ME_PATCH_NAME_KNOWN;
+		cur_sysex_base = me_editor_add_addresses(cur_sysex_base,
+				USER_PATCH_DELTA);
+	    }
+	    return -1;
+	}
+
+	name_keys = g_key_file_get_keys(key_file, PATCH_GROUP,
+			&length, &error);
+        if (g_error_matches(error, G_KEY_FILE_ERROR,
+			        G_KEY_FILE_ERROR_GROUP_NOT_FOUND)) {
+	    g_clear_error(&error);
+	    goto parse_error;
+	}
+
+	if (length != NUM_USER_PATCHES) {
+	    g_strfreev(name_keys);
+	    goto parse_error;
+	}
+
+	for (i = 0; i < NUM_USER_PATCHES; i++) {
+	    cur_key = name_keys[i];
+	    if (sscanf(cur_key, "0x%04X", &sysex_base_addr) != 1) continue;
+	    patch_name = g_key_file_get_string(key_file,
+			    PATCH_GROUP, cur_key, NULL);
+	    patch_name_len = strlen(patch_name);
+	    if (patch_name_len > MAX_SET_NAME_SIZE)
+		patch_name_len = MAX_SET_NAME_SIZE;
+	    memcpy(me_editor_patches[i].name, patch_name,
+			    patch_name_len + 1);
+	    me_editor_patches[i].name[MAX_SET_NAME_SIZE] = '\0';
+	    me_editor_patches[i].flags |= ME_PATCH_NAME_KNOWN;
+	    me_editor_patches[i].sysex_base_addr = sysex_base_addr;
+	}
+
+	g_strfreev(name_keys);
+	g_key_file_free(key_file);
+	return 0;
+
+parse_error:
+	return -2;
+}
+
+int me_editor_write_patch_names(char *filename) {
+	int i, retval = 0;
+	FILE *fp;
+	GKeyFile *key_file;
+	gsize length;
+	gchar key_name[11];
+	gchar *data;
+
+	fp = fopen(filename, "w");
+	if (!fp) return -2;
+
+	key_file = g_key_file_new();
+
+	for (i = 0; i < NUM_USER_PATCHES; i++) {
+	    if (!(me_editor_patches[i].flags & ME_PATCH_NAME_KNOWN)) {
+		retval = -1;
+		goto failed;
+	    }
+	    sprintf(key_name, "0x%04X", me_editor_patches[i].sysex_base_addr);
+	    g_key_file_set_string(key_file, PATCH_GROUP,
+					key_name, me_editor_patches[i].name);
+	}
+
+	data = g_key_file_to_data(key_file, &length, NULL);
+	size_t s = fwrite(data, sizeof(gchar), length, fp);
+
+	free(data);
+failed:
+	fclose(fp);
+	g_key_file_free(key_file);
+	return retval;
+}
+
 static int transfer_addresses_under_member(MidiClassMember *class_member,
 		uint32_t sysex_addr, int pasting) {
 	int i, retval;
@@ -563,6 +683,7 @@ int me_editor_copy_class(MidiClass *class, uint32_t sysex_addr, int *depth) {
 	cur_class_data->m_addresses = allocate(midi_address, num_addresses);
 	cur_class_data->class = class_member->class;
 	cur_class_data->sysex_addr_base = sysex_addr;
+	cur_class_data->name = me_editor_get_patch_name(sysex_addr);
 
 	cp_addresses_under_member(class_member,
 					cur_class_data, &index, sysex_addr, 0);
@@ -582,7 +703,7 @@ failed:
 
 int me_editor_paste_class(MidiClass *class, uint32_t sysex_addr,
 		int *depth) {
-	int dummy, i, retval = 0;
+	int dummy, i, retval = 0, patch_num;
 	Class_data *cur_class_data;
 	Class_data *verify_class_data;
 	Class_data *last_class_data;
@@ -659,6 +780,12 @@ int me_editor_paste_class(MidiClass *class, uint32_t sysex_addr,
 	
 	if (broken_addresses) retval = -3;
 
+	patch_num = me_editor_get_patch_index(sysex_addr);
+	if (patch_num >= 0) {
+	    memcpy(me_editor_patches[patch_num].name, cur_class_data->name,
+			    strlen(cur_class_data->name) + 1);
+	}
+
 	copy_paste_data = copy_paste_data->next;
 	if (cur_class_data->m_addresses)
 		free(cur_class_data->m_addresses);
@@ -694,8 +821,13 @@ void me_editor_flush_copy_data(int *depth) {
 	g_clear_error(&error);						    \
 	if (p_error) goto parse_error
 
+char *me_editor_get_copy_data_name(void) {
+	if (!copy_paste_data) return NULL;
+	return copy_paste_data->name;
+}
+
 int me_editor_read_copy_data_from_file(char *filename, int *depth) {
-	int retval, p_error, i;
+	int retval, p_error, i, patch_name_len, patch_num;
 	GKeyFile *key_file;
 	GError *error;
 	gsize length;
@@ -761,6 +893,19 @@ int me_editor_read_copy_data_from_file(char *filename, int *depth) {
 	cur_class_data->m_addresses = allocate(midi_address, num_addresses);
 	cur_class_data->class = class;
 	cur_class_data->sysex_addr_base = addr_base;
+	
+	patch_num = me_editor_get_patch_index(addr_base);
+	if (patch_num >= 0) {
+	    patch_name_len = strlen(basename(filename));
+	    if (patch_name_len > MAX_SET_NAME_SIZE)
+		patch_name_len = MAX_SET_NAME_SIZE;
+	    memcpy(me_editor_patches[patch_num].name, basename(filename),
+			    patch_name_len + 1);
+	    me_editor_patches[i].name[MAX_SET_NAME_SIZE] = '\0';
+	    cur_class_data->name = me_editor_patches[patch_num].name;
+	} else {
+	    cur_class_data->name = NULL;
+	}
 
 	for (i = 0; i < num_addresses; i++) {
 	    cur_key = address_keys[i];

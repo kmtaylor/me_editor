@@ -30,7 +30,7 @@ extern void *__interface_allocate(size_t size, char *func_name);
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
 #define PATCHDIR "/home/pi/Patches/ME5"
-#define STUDIO_DIR PATCHDIR "/Studio"
+#define PATCH_NAME_FILE PATCHDIR "/.patch_names"
 
 typedef struct {
 	char *name;

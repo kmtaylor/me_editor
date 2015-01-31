@@ -30,6 +30,8 @@
 #include <menu.h>
 #include <panel.h>
 #include <form.h>
+#include <sys/stat.h>
+#include <dirent.h>
 
 #include "log.h"
 #include "me_editor.h"
@@ -40,6 +42,14 @@
 
 #define allocate(type, num, func_name) \
 	__interface_allocate(((num) * sizeof(type)), func_name)
+
+static char *current_dir_init = PATCHDIR;
+static char *current_dir = PATCHDIR;
+
+struct priv_dirent {
+	struct dirent *file;
+	int name_wanted;
+};
 
 static int global_want_quit;
 
@@ -198,7 +208,8 @@ static int get_string(char *message, char **string) {
 	set_fields[1] = NULL;
 	nr_fields = ARRAY_SIZE(set_fields) - 1;
 
-	memset(set_string[0], 0, MAX_SET_NAME_SIZE + 1);
+	if (*string) memcpy(set_string[0], *string, MAX_SET_NAME_SIZE + 1);
+	else memset(set_string[0], 0, MAX_SET_NAME_SIZE + 1);
 	set_field_back(set_fields[0], A_UNDERLINE);
 	set_field_buffer(set_fields[0], 0, set_string[0]);
 
@@ -251,89 +262,6 @@ static int get_string(char *message, char **string) {
 
 	if (want_quit == 2 && retval == 0) {
 	    asprintf(string, "%s", field_buffer(set_fields[0], 0));
-	}
-
-	if (want_quit == 1) retval = -1;
-
-	for (i=0; i < nr_fields; i++)
-		free_field(set_fields[i]);
-	free_form(set_form);
-	del_panel(set_panel);
-	delwin(form_win);
-	delwin(set_win);
-	curs_set(0);
-	return retval;
-}
-
-static int get_layer_and_part(int *layer, int *part) {
-	WINDOW *set_win, *form_win;
-	PANEL *set_panel;
-	FORM *set_form;
-	FIELD *set_fields[3];
-	int nr_fields, i, c, want_quit = 0;
-	char set_string[2][9];
-	int retval = 0;
-
-	set_fields[0] = new_field(1, 1, 0, 10, 0, 0);
-	set_fields[1] = new_field(1, 2, 1, 10, 0, 0);
-	set_fields[2] = NULL;
-	nr_fields = ARRAY_SIZE(set_fields) - 1;
-	
-	sprintf(set_string[0], "1");
-	sprintf(set_string[1], "1");
-	for (i=0; i < nr_fields; i++) {
-		set_field_back(set_fields[i], A_UNDERLINE);
-		set_field_buffer(set_fields[i], 0, set_string[i]);
-	}
-
-	set_field_type(set_fields[0], TYPE_INTEGER, 0, 1, 4);
-	set_field_type(set_fields[1], TYPE_INTEGER, 0, 1, 16);
-	
-	set_win = newwin(8, 40, LINES/4, natural(COLS/2 - 20));
-	form_win = derwin(set_win, 4, 38 , 3, 1);
-	set_form = new_form(set_fields);
-	set_panel = new_panel(set_win);
-	set_form_win(set_form, set_win);
-	set_form_sub(set_form, form_win);
-
-	curs_set(1);
-	box(set_win, 0, 0);
-        mvwaddch(set_win, 2, 0, ACS_LTEE);
-        mvwhline(set_win, 2, 1, ACS_HLINE, 38);
-        mvwaddch(set_win, 2, 39, ACS_RTEE);
-	print_in_middle(set_win, 1, 0, 40, "Transfer Live set to Studio part:");
-	post_form(set_form);
-	mvwprintw(form_win, 0,  1, "Layer:");
-	mvwprintw(form_win, 1,  1, "Part:");
-	mvwprintw(form_win, 3,  1, "Press Enter to confirm, 'q' to exit.");
-
-	do {
-		update_panels();
-		doupdate();
-		c = getch();
-		switch(c) {
-			case KEY_UP:
-				form_driver(set_form, REQ_PREV_FIELD);
-				break;
-			case KEY_DOWN:
-				form_driver(set_form, REQ_NEXT_FIELD);
-				break;
-			case 10:
-				want_quit = 2;
-				form_driver(set_form, REQ_NEXT_FIELD);
-				break;
-			case 'q':
-				want_quit = 1;
-				break;
-			default:
-				form_driver(set_form, c);
-				break;
-		}
-	} while (!want_quit);
-	
-	if (want_quit == 2) {
-	    *layer = atoi(field_buffer(set_fields[0], 0));
-	    *part = atoi(field_buffer(set_fields[1], 0));
 	}
 
 	if (want_quit == 1) retval = -1;
@@ -449,6 +377,7 @@ static int update_value(uint32_t sysex_base_addr, uint32_t *sysex_value,
 	uint32_t sysex_addr = sysex_base_addr + m_class->sysex_addr_base;
 	midi_address *m_address, *m_base_address;
 
+	if (strstr(m_class->name, "Patch")) return 2;
 	if (m_class->class) return -1;
 
 	m_address = me_editor_match_midi_address(sysex_addr);
@@ -467,6 +396,23 @@ static int update_value(uint32_t sysex_base_addr, uint32_t *sysex_value,
 	}
 	*sysex_value = m_address->value;
 	return 1;
+}
+
+static char *make_long_name(const char *orig_name, int len) {
+	int i;
+	char *long_name;
+	char *func_name = "make_long_name()";
+
+	long_name = allocate(char, len + 1, func_name);
+
+	strncpy(long_name, orig_name, len);
+
+	for (i = strlen(orig_name); i < len; i++) {
+	    long_name[i] = ' ';
+	}
+	long_name[len] = '\0';
+	
+	return long_name;
 }
 
 static void print_rhc(uint32_t sysex_base_addr, MidiClassMember *tmp_member,
@@ -496,24 +442,25 @@ static void print_rhc(uint32_t sysex_base_addr, MidiClassMember *tmp_member,
 		PRINT_BASE10(print_sysex_value, i - skip); 
 		PRINT_HEX(print_sysex_value, i - skip); 
 		break;
+            case 2:
+                print_string = me_editor_get_patch_name(sysex_base_addr + 
+				tmp_member->sysex_addr_base);
+		print_string = make_long_name(print_string, MAX_SET_NAME_SIZE);
+                if (print_string) {
+                    PRINT_STRING(print_string, i - skip);
+                }
+		free(print_string);
 	}
 }
 
 static void do_paste(MidiClassMember *tmp_member, MidiClass *cur_class,
 		uint32_t sysex_base_addr, int *copy_depth) {
-	static int layer_to_part;
 	int layer, part, retval;
 	int tried_layer_to_part = 0;
 
-	if (layer_to_part) {
-	    layer_to_part = 0;
-	    if (get_layer_and_part(&layer, &part) < 0) return;
-	    tried_layer_to_part = 1;
-	} else {
-	    retval = me_editor_paste_class(cur_class,
+	retval = me_editor_paste_class(cur_class,
 		sysex_base_addr + tmp_member->sysex_addr_base,
 		copy_depth);
-	}
 
 	if (retval == -4) {
 	    char *msg[2];
@@ -528,11 +475,6 @@ static void do_paste(MidiClassMember *tmp_member, MidiClass *cur_class,
 	    dialog_box(2, msg, dialog_continue);
 	}
 	if (retval == -2) {
-	    if (!layer_to_part && !tried_layer_to_part) {
-		layer_to_part = 1;
-		do_paste(tmp_member, cur_class, sysex_base_addr, copy_depth);
-		return;
-	    }
 	    char *msg[2];
 	    msg[0] = "Cannot paste here.";
 	    msg[1] = "Class is incompatable.";
@@ -545,21 +487,221 @@ static void do_paste(MidiClassMember *tmp_member, MidiClass *cur_class,
 	}
 }
 
-static char *make_long_name(const char *orig_name, int len) {
+static int file_filter(const struct dirent *entry) {
+	struct stat file_info;
+	if (!strcmp(entry->d_name, "..")) return 1;
+	if (entry->d_name[0] == '.') return 0;
+	if (entry->d_type == DT_DIR) return 1;
+	if (entry->d_type == DT_REG) return 1;
+	return 0;
+}
+
+int file_sorter (const struct dirent **a, const struct dirent **b) {
+	if (((*a)->d_type == DT_DIR) && ((*b)->d_type == DT_REG)) return -1;
+	if (((*a)->d_type == DT_REG) && ((*b)->d_type == DT_DIR)) return 1;
+
+	return strverscmp ((*a)->d_name, (*b)->d_name);
+}
+
+static char *file_make_long_name(struct dirent *cur_file, int len) {
 	int i;
 	char *long_name;
-	char *func_name = "make_long_name()";
+	char *func_name = "file_make_long_name()";
 
 	long_name = allocate(char, len + 1, func_name);
 
-	strncpy(long_name, orig_name, len);
+	if (cur_file->d_type == DT_DIR) {
+	    strncpy(long_name, cur_file->d_name, len);
+	    strncat(long_name, "/", len);
+	} else {
+	    strncpy(long_name, cur_file->d_name, len);
+	}
 
-	for (i = strlen(orig_name); i < len; i++) {
+	for (i = strlen(long_name); i < len; i++) {
 	    long_name[i] = ' ';
 	}
 	long_name[len] = '\0';
 	
 	return long_name;
+}
+
+static void pivot_root(const char *new_root) {
+	char *file_path;
+	asprintf(&file_path, "%s/%s", current_dir, new_root);
+	if (current_dir != current_dir_init) free(current_dir);
+	current_dir = file_path;
+}
+
+static char *full_filename(const char *file) {
+	char *file_path;
+	asprintf(&file_path, "%s/%s", current_dir, file);
+	return file_path;
+}
+
+static char *file_browser(char **headers, char *footer, int *finished) {
+	PANEL *explorer_panel;
+	MENU *explorer_menu;
+	WINDOW *explorer_win, *menu_sub_win;
+	ITEM **member_items;
+	ITEM *cur;
+	int copy_depth = 0;
+	int retval;
+	int n_members;
+	int n_parents = 0;
+	int menu_width = COLS - 23;
+	int c, i, want_break = 0, want_restart = 0;
+	int position = 0, skip = 0, damaged = 1, first_draw = 1;
+	char *func_name = "file_browser()";
+	char *filename;
+	char *file_path;
+	char **long_names;
+	char *loaded_file_name = NULL;
+	struct dirent **dir_contents;
+	struct priv_dirent *cur_entry;
+	struct priv_dirent *dir_data;
+
+	n_members = scandir(current_dir, &dir_contents,
+			    file_filter, file_sorter);
+
+	if (n_members < 0) {
+	    char *message[3];
+	    message[0] = "Error:";
+	    message[1] = "Could not open directory:";
+	    message[2] = current_dir;
+	    dialog_box(3, message, dialog_continue);
+
+	    return NULL;
+	}
+	
+	cbreak(); clear();
+
+	long_names = allocate(char *, n_members, func_name);
+	dir_data = allocate(struct priv_dirent, n_members, func_name);
+	memset(dir_data, 0, sizeof(struct priv_dirent) * n_members);
+
+	member_items = allocate(ITEM *, n_members + 1, func_name);
+	for (i = 0; i < n_members; i++) {
+	    long_names[i] = file_make_long_name(dir_contents[i], menu_width);
+	    member_items[i] = new_item(long_names[i], NULL);
+	    dir_data[i].file = dir_contents[i];
+	    set_item_userptr(member_items[i], (void *) &dir_data[i]);
+	}
+	member_items[n_members] = NULL;
+
+	explorer_win = newwin(LINES - 1, COLS, 0, 0);
+	explorer_panel = new_panel(explorer_win);
+	explorer_menu = new_menu(member_items);
+	box(explorer_win, 0, 0);
+	set_menu_mark(explorer_menu, " * ");
+	menu_sub_win = derwin(explorer_win, LINES - 5 - (2 * n_parents),
+			COLS - 2, 3 + (2 * n_parents), 1);
+	set_menu_win(explorer_menu, explorer_win);
+	set_menu_sub(explorer_menu, menu_sub_win);
+	set_menu_format(explorer_menu, LINES - 5 - (2 * n_parents), 1);
+
+	for (i = 0; i < n_parents + 1; i++) {
+	    print_in_middle(explorer_win, 1 + (2 * i), 0, COLS, headers[i]); 
+	    mvwaddch(explorer_win, 2 + (2 * i), 0, ACS_LTEE);
+	    mvwhline(explorer_win, 2 + (2 * i), 1, ACS_HLINE, COLS-2);
+	    mvwaddch(explorer_win, 2 + (2 * i), COLS-1, ACS_RTEE);
+	}
+
+        mvprintw(LINES - 1, 0, footer);
+	post_menu(explorer_menu);
+
+	do {
+		update_panels();
+		doupdate();
+		c = getch();
+		switch(c) {
+		    case 10:
+			cur = current_item(explorer_menu);
+                        cur_entry = item_userptr(cur);
+                        if (cur_entry->file->d_type != DT_DIR) break;
+                        if (loaded_file_name) free(loaded_file_name);
+                        loaded_file_name = strdup(cur_entry->file->d_name);
+			pivot_root(cur_entry->file->d_name);
+			want_break = 1;
+			want_restart = 1;
+			break;
+		    case 'r':
+			cur = current_item(explorer_menu);
+                        cur_entry = item_userptr(cur);
+                        if (cur_entry->file->d_type == DT_DIR) break;
+                        if (loaded_file_name) free(loaded_file_name);
+                        loaded_file_name = strdup(cur_entry->file->d_name);
+			want_break = 1;
+			want_restart = 1;
+			*finished = 1;
+			break;
+		    case KEY_DOWN:
+		    case '/':
+			if ( position == LINES - 3 - (2 * n_parents) ) { 
+			    if (skip <
+				    (n_members - LINES + 2 + (2 * n_parents))) {
+				skip++;
+				damaged = 1;
+			    }
+			} else position++;
+			menu_driver(explorer_menu, REQ_DOWN_ITEM);
+			break;
+		    case KEY_UP:
+		    case '.':
+			if (position == 0) {
+			    if (skip > 0) {
+				skip--;
+				damaged = 1;
+			    }
+			} else position--;
+			menu_driver(explorer_menu, REQ_UP_ITEM);
+			break;
+		    case 'q':
+			want_break = 1;
+			break;
+		}
+	} while( !want_break );
+	
+	for (i = 0; i < n_members; i++)
+	    free(dir_contents[i]);
+	free(dir_contents);
+	for (i = 0; i < n_members; i++)
+	    free_item(member_items[i]);
+	unpost_menu(explorer_menu);
+	free_menu(explorer_menu);
+	free(member_items);
+	for (i = 0; i < n_members; i++)
+	    free(long_names[i]);
+	free(long_names);
+	del_panel(explorer_panel);
+	delwin(menu_sub_win);
+	delwin(explorer_win);
+	clear(); halfdelay(10);
+	if (want_restart) return loaded_file_name;
+	return NULL;
+}
+
+static char *file_browser_wrapper(void) {
+        char *headers[1];
+	char *init_header = " Choose file: ";
+	char *footer =  
+	" (R)ead, (Q)uit. ";
+	int init = 1;
+	char *dir_name = "";
+	int finished = 0;
+
+	while(dir_name && !finished) {
+	    if (init) {
+		headers[0] = init_header;
+		init = 0;
+	    } else {
+		asprintf(&headers[0], " Choose file: (%s) ", dir_name);
+		free(dir_name);
+	    }
+	    dir_name = file_browser(headers, footer, &finished);
+	    if (headers[0] != init_header) free(headers[0]);
+	}
+	if (finished) return dir_name;
+	else return NULL;
 }
 
 static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
@@ -578,7 +720,7 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 	int position = 0, skip = 0, damaged = 1;
 	char *func_name = "sysex_explorer()";
 	char **new_headers;
-	char *filename;
+	char *filename = NULL;
 	char *long_filename;
 	char **long_names;
 	MidiClassMember *tmp_member;
@@ -616,7 +758,6 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 	    mvwaddch(explorer_win, 2 + (2 * i), COLS-1, ACS_RTEE);
 	}
 
-        mvprintw(LINES - 1, 0, footer);
 	post_menu(explorer_menu);
 
 	first_member_address = me_editor_match_midi_address(sysex_base_addr);
@@ -637,6 +778,7 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 			print_rhc(sysex_base_addr, tmp_member, menu_sub_win,
 					skip, i);
 		    }
+		    mvprintw(LINES - 1, 0, footer);
 		    mvprintw(LINES - 1, COLS - 9, "Copies %i", copy_depth);
 		    damaged = 0;
 		    wrefresh(menu_sub_win);
@@ -703,11 +845,12 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 					            tmp_member, 1);
 			damaged = 1;
 			break;
-		    case 'a':
+		    case 'f':
 			want_refresh = 1;
 			damaged = 1;
 			break;
 		    case 'c':
+			if (cur_class != &me_editor_top_midi_class) break; 
 			cur = current_item(explorer_menu);
 			tmp_member = item_userptr(cur);
 			if (me_editor_copy_class(cur_class,
@@ -731,14 +874,14 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 			damaged = 1;
 			break;
 		    case 'w':
-			cur = current_item(explorer_menu);
-			tmp_member = item_userptr(cur);
+			filename = me_editor_get_copy_data_name();
 			retval = get_string("Filename:", &filename);
 			if (retval < 0) break;
 			asprintf(&long_filename, "%s/%s", PATCHDIR, filename);
 			retval = me_editor_write_copy_data_to_file(
 					    long_filename, &copy_depth);
 			free(filename);
+			filename = NULL;
 			free(long_filename);
 			if (retval == -2) {
 			    char *msg[1];
@@ -753,15 +896,11 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 			damaged = 1;
 			break;
 		    case 'r':
-			cur = current_item(explorer_menu);
-			tmp_member = item_userptr(cur);
-			retval = get_string("Filename:", &filename);
-			if (retval < 0) break;
-			asprintf(&long_filename, "%s/%s", PATCHDIR, filename);
+			filename = file_browser_wrapper();
+			if (!filename) break;
+			long_filename = full_filename(filename);
 			retval = me_editor_read_copy_data_from_file(
 					    long_filename, &copy_depth);
-			free(filename);
-			free(long_filename);
 			if (retval == -2) {
 			    char *msg[1];
                             msg[0] = "Error, could not parse file";
@@ -772,6 +911,8 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
                             msg[0] = "Error, could not find file";
                             dialog_box(1, msg, dialog_continue);
 			}
+			free(long_filename);
+			filename = NULL;
 			damaged = 1;
 			break;
 		    case 'q':
@@ -797,7 +938,7 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 static void sysex_explorer_menu_wrapper(void) {
         char *headers[] = { "ME-5 Sysex Explorer" };
 	char *footer =  
-	"(S)et value, Re(f)resh value, Refresh (A)ll, (Q)uit, "
+	"(S)et value, Re(f)resh, (Q)uit, "
 	"(C)opy, (P)aste, C(l)ear, (W)rite, (R)ead.";
 	sysex_explorer(headers, footer, &me_editor_top_midi_class, 0);
 }
@@ -837,6 +978,7 @@ int main(void) {
 	PANEL *main_panel;
         WINDOW *main_win, *menu_sub_win;
         int n_mm_choices, i, c, mm_lines;
+	int retval;
 
         /* Initialize curses */
         initscr();
@@ -886,6 +1028,8 @@ int main(void) {
 	    global_want_quit = 1;
         }	
 	
+	me_editor_read_patch_names(PATCH_NAME_FILE);
+
 	/* Post the menu */
         post_menu(main_menu);
 
@@ -909,6 +1053,12 @@ int main(void) {
 				break;
                 }
         } while ( !global_want_quit );
+
+	retval = me_editor_write_patch_names(PATCH_NAME_FILE);
+
+	if (retval < 0) {
+	    report_error("Error writing patch names");
+	}
 
 	me_editor_close();
         /* Unpost and free all the memory taken up */
