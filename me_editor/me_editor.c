@@ -650,6 +650,7 @@ static void cp_addresses_under_member(MidiClassMember *class_member,
 int me_editor_copy_class(MidiClass *class, uint32_t sysex_addr, int *depth) {
 	int num_addresses, retval;
 	int index = 0;
+	char *patch_name;
 	MidiClassMember *class_member;
         Class_data *cur_class_data, *last_class_data = NULL;
 
@@ -683,7 +684,9 @@ int me_editor_copy_class(MidiClass *class, uint32_t sysex_addr, int *depth) {
 	cur_class_data->m_addresses = allocate(midi_address, num_addresses);
 	cur_class_data->class = class_member->class;
 	cur_class_data->sysex_addr_base = sysex_addr;
-	cur_class_data->name = me_editor_get_patch_name(sysex_addr);
+	patch_name = me_editor_get_patch_name(sysex_addr);
+	if (patch_name) cur_class_data->name = strdup(patch_name);
+	else cur_class_data->name = NULL;
 
 	cp_addresses_under_member(class_member,
 					cur_class_data, &index, sysex_addr, 0);
@@ -787,6 +790,8 @@ int me_editor_paste_class(MidiClass *class, uint32_t sysex_addr,
 	}
 
 	copy_paste_data = copy_paste_data->next;
+	if (cur_class_data->name)
+		free(cur_class_data->name);
 	if (cur_class_data->m_addresses)
 		free(cur_class_data->m_addresses);
 	if (verify_class_data->m_addresses)
@@ -803,6 +808,7 @@ void me_editor_flush_copy_data(int *depth) {
         while (copy_paste_data) {
             cur_class_data = copy_paste_data;
             copy_paste_data = copy_paste_data->next;
+	    if (cur_class_data->name) free(cur_class_data->name);
 	    if (cur_class_data->m_addresses) free(cur_class_data->m_addresses);
             free(cur_class_data);
         }
@@ -827,7 +833,7 @@ char *me_editor_get_copy_data_name(void) {
 }
 
 int me_editor_read_copy_data_from_file(char *filename, int *depth) {
-	int retval, p_error, i, patch_name_len, patch_num;
+	int retval, p_error, i;
 	GKeyFile *key_file;
 	GError *error;
 	gsize length;
@@ -893,19 +899,7 @@ int me_editor_read_copy_data_from_file(char *filename, int *depth) {
 	cur_class_data->m_addresses = allocate(midi_address, num_addresses);
 	cur_class_data->class = class;
 	cur_class_data->sysex_addr_base = addr_base;
-	
-	patch_num = me_editor_get_patch_index(addr_base);
-	if (patch_num >= 0) {
-	    patch_name_len = strlen(basename(filename));
-	    if (patch_name_len > MAX_SET_NAME_SIZE)
-		patch_name_len = MAX_SET_NAME_SIZE;
-	    memcpy(me_editor_patches[patch_num].name, basename(filename),
-			    patch_name_len + 1);
-	    me_editor_patches[i].name[MAX_SET_NAME_SIZE] = '\0';
-	    cur_class_data->name = me_editor_patches[patch_num].name;
-	} else {
-	    cur_class_data->name = NULL;
-	}
+	cur_class_data->name = strndup(basename(filename), MAX_SET_NAME_SIZE);
 
 	for (i = 0; i < num_addresses; i++) {
 	    cur_key = address_keys[i];
@@ -969,6 +963,8 @@ int me_editor_write_copy_data_to_file(char *filename, int *depth) {
 	free(data);
 	g_key_file_free(key_file);
 	copy_paste_data = copy_paste_data->next;
+	if (cur_class_data->name)
+		free(cur_class_data->name);
 	if (cur_class_data->m_addresses)
 		free(cur_class_data->m_addresses);
 	free(cur_class_data);
