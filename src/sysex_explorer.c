@@ -189,8 +189,11 @@ static void increment_decrement_value(uint32_t sysex_address,
 		me_editor_match_midi_address(sysex_base_address);
 	m_address->value += delta;
 	m_address->flags &= ~M_ADDRESS_FETCHED;
-	if (delta) 
+	if (delta) {
 	    me_editor_send_bulk_sysex(m_base_address, m_address->class->size);
+	    usleep(500000);
+	    me_editor_select_patch(sysex_address);
+	}
 	free(data);
 }
 
@@ -353,6 +356,8 @@ static int set_value(uint32_t sysex_address, uint32_t sysex_base_address) {
 	    m_address->value = sysex_value;
 	    m_address->flags &= ~M_ADDRESS_FETCHED;
 	    me_editor_send_bulk_sysex(m_base_address, m_address->class->size);
+	    usleep(500000);
+	    me_editor_select_patch(sysex_address);
 	}
 
 	if (want_quit == 1) retval = -1;
@@ -823,6 +828,7 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 		    case 10:
 			cur = current_item(explorer_menu);
 			tmp_member = item_userptr(cur);
+			if (!tmp_member->class) break;
 			new_headers = 
 				allocate(char *, n_parents + 2, func_name);
 			for (i = 0; i < n_parents + 1; i++)
@@ -837,7 +843,10 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 		    case 's':
 			cur = current_item(explorer_menu);
 			tmp_member = item_userptr(cur);
-			if (tmp_member->class) break;
+			if (tmp_member->class) {
+			    me_editor_select_patch(tmp_member->sysex_addr_base);
+			    break;
+			}
 			set_value(sysex_base_addr +
 					tmp_member->sysex_addr_base,
 					sysex_base_addr);

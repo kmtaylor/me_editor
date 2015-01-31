@@ -29,6 +29,8 @@ extern void sysex_set_timeout(int timeout_time);
 
 extern void sysex_wait_write(void);
 
+extern void sysex_send_event(uint32_t sysex_size, uint8_t *data);
+
 extern int sysex_send(uint8_t dev_id, uint32_t model_id, uint32_t sysex_addr,
 		uint32_t sysex_size, uint8_t *data);
 extern int sysex_recv(uint8_t dev_id, uint32_t model_id, uint32_t sysex_addr,

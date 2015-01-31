@@ -449,6 +449,23 @@ int me_editor_listen_sysex_event(uint8_t *command_id,
 	return sysex_listen_event(command_id, address, data, &sum);
 }
 
+void me_editor_select_patch(uint32_t sysex_addr) {
+	/* Not technically a SysEx message but the (internal) 
+	 * API will allow it */
+	uint32_t sysex_base = FIRST_USER_PATCH_ADDR;
+	uint8_t buf[2] = { 0xC0, 0x00 };
+	int i;
+
+	for (i = 0; i < NUM_USER_PATCHES; i++) {
+	    sysex_base = me_editor_add_addresses(sysex_base,
+				USER_PATCH_DELTA);
+	    if (sysex_addr < sysex_base) break;
+	}
+	buf[1] = i;
+
+	jack_sysex_send_event(2, buf);
+}
+
 static int me_editor_get_patch_index(uint32_t sysex_addr) {
         int i;
         for (i = 0; i < NUM_USER_PATCHES; i++) {

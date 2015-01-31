@@ -61,6 +61,10 @@ void sysex_wait_write(void) {
 	jack_sysex_wait_write();
 }
 
+void sysex_send_event(uint32_t sysex_size, uint8_t *data) {
+	jack_sysex_send_event(sysex_size, data);
+}
+
 static int checksum(int len, uint8_t *data) {
 	int i, sum;
 	
