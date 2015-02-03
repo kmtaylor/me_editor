@@ -38,7 +38,7 @@
 #include "midi_addresses.h"
 #include "sysex_explorer.h"
 
-#define CLIENT_NAME "sysex_explorer"
+#define CLIENT_NAME "me_explorer"
 
 #define allocate(type, num, func_name) \
 	__interface_allocate(((num) * sizeof(type)), func_name)
