@@ -15,7 +15,7 @@ midi_addresses.c: $(top_srcdir)/manual_parse/manual_parse
 	$(top_srcdir)/manual_parse/manual_parse > $@ \
 		2> $(top_srcdir)/include/midi_addresses.h
 
-EXTRA_DIST = libme_editor.pc.in sysex.h
+EXTRA_DIST = me_editor.pc.in sysex.h
 pkgconfigdir = @PKGCONF_DIR@
 pkgconfig_DATA = me_editor.pc
 
