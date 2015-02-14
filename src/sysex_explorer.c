@@ -555,7 +555,6 @@ static char *file_browser(char **headers, char *footer, int *finished) {
 	int n_parents = 0;
 	int menu_width = COLS - 23;
 	int c, i, want_break = 0, want_restart = 0;
-	int position = 0, skip = 0, damaged = 1, first_draw = 1;
 	char *func_name = "file_browser()";
 	char *filename;
 	char *file_path;
@@ -641,23 +640,10 @@ static char *file_browser(char **headers, char *footer, int *finished) {
 			break;
 		    case KEY_DOWN:
 		    case '/':
-			if ( position == LINES - 3 - (2 * n_parents) ) { 
-			    if (skip <
-				    (n_members - LINES + 2 + (2 * n_parents))) {
-				skip++;
-				damaged = 1;
-			    }
-			} else position++;
 			menu_driver(explorer_menu, REQ_DOWN_ITEM);
 			break;
 		    case KEY_UP:
 		    case '.':
-			if (position == 0) {
-			    if (skip > 0) {
-				skip--;
-				damaged = 1;
-			    }
-			} else position--;
 			menu_driver(explorer_menu, REQ_UP_ITEM);
 			break;
 		    case 'q':
@@ -720,6 +706,7 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 	int retval;
 	int n_members = cur_class->size;
 	int n_parents = me_editor_class_num_parents(cur_class);
+	int max_items = LINES - 5 - (2 * n_parents);
 	int menu_width = COLS - 23;
 	int c, i, want_break = 0, want_refresh = 1;
 	int position = 0, skip = 0, damaged = 1;
@@ -750,11 +737,11 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 	explorer_menu = new_menu(member_items);
 	box(explorer_win, 0, 0);
 	set_menu_mark(explorer_menu, " * ");
-	menu_sub_win = derwin(explorer_win, LINES - 5 - (2 * n_parents),
+	menu_sub_win = derwin(explorer_win, max_items,
 			COLS - 2, 3 + (2 * n_parents), 1);
 	set_menu_win(explorer_menu, explorer_win);
 	set_menu_sub(explorer_menu, menu_sub_win);
-	set_menu_format(explorer_menu, LINES - 5 - (2 * n_parents), 1);
+	set_menu_format(explorer_menu, max_items, 1);
 
 	for (i = 0; i < n_parents + 1; i++) {
 	    print_in_middle(explorer_win, 1 + (2 * i), 0, COLS, headers[i]); 
@@ -791,14 +778,20 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 		c = getch();
 		switch(c) {
 		    case KEY_DOWN:
-			if ( position == LINES - 6 - (2 * n_parents) ) { 
-			    if (skip <
-				    (n_members - LINES + 5 + (2 * n_parents))) {
+			if ( position == max_items - 1 ) { 
+			    if (skip < (n_members - max_items)) {
 				skip++;
 				damaged = 1;
 			    }
 			} else position++;
 			menu_driver(explorer_menu, REQ_DOWN_ITEM);
+			break;
+		    case 'd':
+			if (skip + (max_items * 2) > n_members) {
+			    skip = n_members - max_items;
+			} else  skip += max_items;
+			damaged = 1;
+			menu_driver(explorer_menu, REQ_SCR_DPAGE);
 			break;
 		    case KEY_UP:
 			if (position == 0) {
@@ -808,6 +801,13 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 			    }
 			} else position--;
 			menu_driver(explorer_menu, REQ_UP_ITEM);
+			break;
+		    case 'u':
+			if ((skip - max_items) > 0) {
+			    skip -= max_items;
+			} else skip = 0;
+			damaged = 1;
+			menu_driver(explorer_menu, REQ_SCR_UPAGE);
 			break;
 		    case KEY_RIGHT:
 			cur = current_item(explorer_menu);
