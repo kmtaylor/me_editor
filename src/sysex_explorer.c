@@ -812,6 +812,7 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 		    case KEY_RIGHT:
 			cur = current_item(explorer_menu);
 			tmp_member = item_userptr(cur);
+			if (tmp_member->class) break;
 			increment_decrement_value(sysex_base_addr +
 					tmp_member->sysex_addr_base,
 					sysex_base_addr, 1);
@@ -820,6 +821,7 @@ static void sysex_explorer(char **headers, char *footer, MidiClass *cur_class,
 		    case KEY_LEFT:
 			cur = current_item(explorer_menu);
 			tmp_member = item_userptr(cur);
+			if (tmp_member->class) break;
 			increment_decrement_value(sysex_base_addr +
 					tmp_member->sysex_addr_base,
 					sysex_base_addr, -1);
